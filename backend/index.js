@@ -2,9 +2,13 @@ import express from "express";
 import cors from "cors";
 import { configDotenv } from "dotenv";
 import Dbconnect from "./database/dbController.js";
-import authRoutes from "./routes/authRoute.js";
 import { OAuth2Client } from "google-auth-library";
 import User from "./models/userModel.js";
+
+// Importing routes
+import productRoutes from "./routes/productRoute.js";
+import authRoutes from "./routes/authRoute.js";
+import categoryRoutes from "./routes/categoryRoute.js";
 
 configDotenv();
 
@@ -38,6 +42,8 @@ export const client = new OAuth2Client(
 // Importing routes
 
 app.use("/api/auth", authRoutes);
+app.use("/api/product", productRoutes);
+app.use("/api/category", categoryRoutes);
 
 app.get("/", async (req, res) => {
   const users = await User.find();

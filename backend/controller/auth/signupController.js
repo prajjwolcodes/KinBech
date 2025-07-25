@@ -1,6 +1,6 @@
 import jwt from "jsonwebtoken";
 import bcrypt from "bcrypt";
-import User from "../models/userModel.js";
+import User from "../../models/userModel.js";
 
 export async function signupController(req, res) {
   try {
@@ -24,7 +24,12 @@ export async function signupController(req, res) {
     });
 
     const token = jwt.sign(
-      { _id: user._id, role: user.role },
+      {
+        _id: user._id,
+        role: user.role,
+        email: user.email,
+        name: user.username,
+      },
       process.env.JWT_SECRET
     );
 

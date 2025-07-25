@@ -1,6 +1,6 @@
 import { OAuth2Client } from "google-auth-library";
 import jwt from "jsonwebtoken";
-import User from "../models/userModel.js";
+import User from "../../models/userModel.js";
 
 const client = new OAuth2Client(process.env.GOOGLE_GOOGLE_CLIENT_ID);
 
@@ -45,9 +45,13 @@ export const googleLogin = async (req, res) => {
     }
 
     if (userExists) {
-      const token = jwt.sign({ email, name }, process.env.JWT_SECRET, {
-        expiresIn: "1h",
-      });
+      const token = jwt.sign(
+        { _id: userExists._id, role: userExists.role, email, name },
+        process.env.JWT_SECRET,
+        {
+          expiresIn: "1h",
+        }
+      );
       return res.status(200).json({
         message: "You are successfully logged in",
         token,
@@ -63,9 +67,13 @@ export const googleLogin = async (req, res) => {
       });
       await newUser.save();
 
-      const token = jwt.sign({ email, name }, process.env.JWT_SECRET, {
-        expiresIn: "1h",
-      });
+      const token = jwt.sign(
+        { _id: newUser._id, role: newUser.role, email, name },
+        process.env.JWT_SECRET,
+        {
+          expiresIn: "1h",
+        }
+      );
       return res.status(201).json({
         message: "User created successfully",
         token,
