@@ -9,6 +9,7 @@ import User from "./models/userModel.js";
 import productRoutes from "./routes/productRoute.js";
 import authRoutes from "./routes/authRoute.js";
 import categoryRoutes from "./routes/categoryRoute.js";
+import orderRoutes from "./routes/orderRoute.js";
 
 configDotenv();
 
@@ -44,6 +45,7 @@ export const client = new OAuth2Client(
 app.use("/api/auth", authRoutes);
 app.use("/api/product", productRoutes);
 app.use("/api/category", categoryRoutes);
+app.use("/api/orders", orderRoutes);
 
 app.get("/", async (req, res) => {
   const users = await User.find();

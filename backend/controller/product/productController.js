@@ -83,7 +83,11 @@ export async function getProductById(req, res) {
 }
 
 export async function createProduct(req, res) {
-  console.log(req.user);
+  if (req.user.role !== "seller") {
+    return res
+      .status(403)
+      .json({ message: "Access denied. Only sellers can create products." });
+  }
   const { name, description, price, categoryId, count, imageUrl } = req.body;
   if (!name || !description || !price || !categoryId) {
     return res.status(400).json({ message: "All fields are required" });
