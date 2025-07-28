@@ -21,10 +21,6 @@ const orderSchema = new mongoose.Schema(
     },
     createdAt: { type: Date, default: Date.now },
     updatedAt: { type: Date, default: Date.now },
-    expireAt: {
-      type: Date,
-      expires: 0, // TTL index built-in for mongoose
-    },
   },
 
   { timestamps: true }
