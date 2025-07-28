@@ -46,6 +46,7 @@ export async function createOrder(req, res) {
         productId: product._id,
         price: product.price,
         quantity: item.quantity,
+        sellerId: product.sellerId, // assuming product has sellerId
       });
 
       total += product.price * item.quantity;

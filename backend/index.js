@@ -27,6 +27,8 @@ app.use((req, res, next) => {
   res.setHeader("Cross-Origin-Opener-Policy", "same-origin-allow-popups");
   next();
 });
+app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
+
 app.use(express.urlencoded({ extended: true }));
 app.use(
   cors({

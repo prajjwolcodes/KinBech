@@ -18,7 +18,7 @@ const paymentSchema = new mongoose.Schema(
       enum: ["UNPAID", "PAID"],
       default: "UNPAID",
     },
-    transactionId: { type: String, required: false },
+    transaction_uuid: { type: String, required: false },
     createdAt: { type: Date, default: Date.now },
     updatedAt: { type: Date, default: Date.now },
   },

@@ -1,6 +1,39 @@
 import e from "express";
 import Product from "../../models/productModel.js";
 
+export async function createProduct(req, res) {
+  if (req.user.role !== "seller") {
+    return res
+      .status(403)
+      .json({ message: "Access denied. Only sellers can create products." });
+  }
+  const { name, description, price, categoryId, count, imageUrl } = req.body;
+  if (!name || !description || !price || !categoryId) {
+    return res.status(400).json({ message: "All fields are required" });
+  }
+  try {
+    const newProduct = new Product({
+      name,
+      description,
+      price,
+      categoryId,
+      count: count || 1,
+      imageUrl: req.file ? `/uploads/${req.file.filename}` : null, // use multer file
+
+      sellerId: req.user._id, // Assuming user ID is available in req.user
+    });
+    await newProduct.save();
+    return res
+      .status(201)
+      .json({ message: "Product Created Successfully", newProduct });
+  } catch (error) {
+    console.error("Error creating product:", error);
+    return res
+      .status(500)
+      .json({ message: error.message || "Internal server error" });
+  }
+}
+
 export async function getAllProducts(req, res) {
   console.log(req.user);
   try {
@@ -76,38 +109,6 @@ export async function getProductById(req, res) {
       .json({ message: "Product Retrieved by id", product });
   } catch (error) {
     console.error("Error fetching product:", error);
-    return res
-      .status(500)
-      .json({ message: error.message || "Internal server error" });
-  }
-}
-
-export async function createProduct(req, res) {
-  if (req.user.role !== "seller") {
-    return res
-      .status(403)
-      .json({ message: "Access denied. Only sellers can create products." });
-  }
-  const { name, description, price, categoryId, count, imageUrl } = req.body;
-  if (!name || !description || !price || !categoryId) {
-    return res.status(400).json({ message: "All fields are required" });
-  }
-  try {
-    const newProduct = new Product({
-      name,
-      description,
-      price,
-      categoryId,
-      count: count || 1,
-      imageUrl,
-      sellerId: req.user._id, // Assuming user ID is available in req.user
-    });
-    await newProduct.save();
-    return res
-      .status(201)
-      .json({ message: "Product Created Successfully", newProduct });
-  } catch (error) {
-    console.error("Error creating product:", error);
     return res
       .status(500)
       .json({ message: error.message || "Internal server error" });
