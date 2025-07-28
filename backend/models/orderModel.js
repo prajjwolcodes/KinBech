@@ -10,11 +10,34 @@ const orderSchema = new mongoose.Schema(
     total: { type: Number, required: true },
     status: {
       type: String,
-      enum: ["Pending", "Shipped", "Delivered", "Cancelled"],
-      default: "Pending",
+      enum: ["PENDING", "CONFIRMED", "DELIVERED", "CANCELLED", "COMPLETED"],
+      default: "PENDING",
+    },
+    shippingInfo: {
+      name: { type: String },
+      address: { type: String },
+      city: { type: String },
+      phone: { type: String },
+    },
+    createdAt: { type: Date, default: Date.now },
+    updatedAt: { type: Date, default: Date.now },
+    expireAt: {
+      type: Date,
+      expires: 0, // TTL index built-in for mongoose
     },
   },
+
   { timestamps: true }
+);
+
+orderSchema.index(
+  { expireAt: 1 },
+  {
+    expireAfterSeconds: 0, // 1 minute
+    partialFilterExpression: {
+      status: { $in: ["PENDING"] },
+    },
+  }
 );
 
 const Order = mongoose.model("Order", orderSchema);

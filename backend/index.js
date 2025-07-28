@@ -10,6 +10,7 @@ import productRoutes from "./routes/productRoute.js";
 import authRoutes from "./routes/authRoute.js";
 import categoryRoutes from "./routes/categoryRoute.js";
 import orderRoutes from "./routes/orderRoute.js";
+import checkoutRoutes from "./routes/checkoutRoute.js";
 
 configDotenv();
 
@@ -46,6 +47,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/product", productRoutes);
 app.use("/api/category", categoryRoutes);
 app.use("/api/orders", orderRoutes);
+app.use("/api/checkout", checkoutRoutes);
 
 app.get("/", async (req, res) => {
   const users = await User.find();

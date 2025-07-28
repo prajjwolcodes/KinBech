@@ -2,6 +2,7 @@ import express from "express";
 
 import { authMiddleware } from "../middleware/authMiddleware.js";
 import {
+  cancelOrder,
   createOrder,
   getAllOrders,
   getBuyerOrders,
@@ -21,5 +22,6 @@ router.route("/myorders").get(getBuyerOrders);
 //seller
 router.route("/update").post(updateOrderStatus);
 router.route("/seller").get(getSellerOrders);
+router.route("/cancel").get(cancelOrder);
 
 export default router;

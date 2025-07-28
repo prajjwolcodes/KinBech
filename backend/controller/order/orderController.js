@@ -40,10 +40,6 @@ export async function createOrder(req, res) {
         throw new Error(`Insufficient stock for ${product.name}`);
       }
 
-      // 3. Deduct quantity
-      product.count -= item.quantity;
-      await product.save({ session });
-
       // 4. Prepare order item
       orderItems.push({
         orderId: null, // set after order is created
@@ -56,7 +52,11 @@ export async function createOrder(req, res) {
     }
 
     // 5. Create order
-    const [order] = await Order.create([{ buyerId, total }], { session });
+    const expireAt = new Date(Date.now() + 1 * 60 * 1000);
+
+    const [order] = await Order.create([{ buyerId, total, expireAt }], {
+      session,
+    });
 
     // 6. Add orderId and insert order items
     orderItems.forEach((i) => (i.orderId = order._id));
@@ -225,12 +225,9 @@ export async function getSellerOrders(req, res) {
 
 export async function updateOrderStatus(req, res) {
   if (req.user.role !== "seller" && req.user.role !== "admin") {
-    return res
-      .status(403)
-      .json({
-        message:
-          "Access denied. Only sellers and admin can update order status.",
-      });
+    return res.status(403).json({
+      message: "Access denied. Only sellers and admin can update order status.",
+    });
   }
   const { id } = req.params;
   const { status } = req.body;
@@ -262,5 +259,37 @@ export async function updateOrderStatus(req, res) {
     });
   } catch (err) {
     res.status(500).json({ status: "error", message: err.message });
+  }
+}
+
+export async function cancelOrder(req, res) {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
+  try {
+    const orderId = req.params.id;
+
+    const orderItems = await OrderItem.find({ orderId })
+      .populate("productId")
+      .session(session);
+
+    // Restore product stock
+    for (const item of orderItems) {
+      const product = item.productId;
+      product.count += item.quantity;
+      await product.save({ session });
+    }
+
+    // Optionally update order status or delete it
+    // await Order.findByIdAndUpdate(orderId, { status: "CANCELLED" }, { session });
+
+    await session.commitTransaction();
+    session.endSession();
+
+    res.json({ message: "Order canceled and stock restored." });
+  } catch (err) {
+    await session.abortTransaction();
+    session.endSession();
+    res.status(400).json({ error: err.message });
   }
 }
