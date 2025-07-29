@@ -35,7 +35,6 @@ export async function createProduct(req, res) {
 }
 
 export async function getAllProducts(req, res) {
-  console.log(req.user);
   try {
     const products = await Product.find()
       .populate("categoryId")

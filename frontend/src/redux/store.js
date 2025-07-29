@@ -14,4 +14,3 @@ export const store = configureStore({
 });
 
 export default store;
-// Type aliases removed because they are only valid in TypeScript files

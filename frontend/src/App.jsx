@@ -13,32 +13,108 @@ import Dashboard from "./pages/seller/Dashboard";
 import CreateProduct from "./pages/seller/CreateProduct";
 import SellerOrders from "./pages/seller/SellerOrders";
 import ListProducts from "./pages/seller/ListProducts";
+import Navbar from "./components/Navbar";
+import RoleRoute from "./middleware/RoleRoute";
 
 const App = () => {
   return (
     <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<LandingPage />} />
-        <Route path="/auth/login" element={<LoginPage />} />
-        <Route path="/auth/signup" element={<SignupPage />} />
+      <Navbar />
+      <div className="w-full flex flex-col gap-2 justify-center items-center">
+        <Routes>
+          <Route path="/" element={<LandingPage />} />
+          <Route path="/auth/login" element={<LoginPage />} />
+          <Route path="/auth/signup" element={<SignupPage />} />
 
-        {/* buyer routes  */}
-        <Route path="/buyer/home" element={<Home />} />
-        <Route path="/buyer/cart" element={<Cart />} />
-        <Route path="/buyer/orders" element={<ViewOrders />} />
-        <Route path="/buyer/products" element={<AllProducts />} />
-        <Route path="/buyer/product/:id" element={<ProductDetails />} />
-        <Route path="/sellers" element={<ListSellers />} />
+          <Route path="/" element={<LandingPage />} />
+          <Route path="/auth/login" element={<LoginPage />} />
+          <Route path="/auth/signup" element={<SignupPage />} />
 
-        {/* <Route path="/buyer/profile" element={<Profile />} /> */}
+          {/* Buyer routes */}
+          <Route
+            path="/buyer/home"
+            element={
+              <RoleRoute allowedRoles={["buyer"]}>
+                <Home />
+              </RoleRoute>
+            }
+          />
+          <Route
+            path="/buyer/cart"
+            element={
+              <RoleRoute allowedRoles={["buyer"]}>
+                <Cart />
+              </RoleRoute>
+            }
+          />
+          <Route
+            path="/buyer/orders"
+            element={
+              <RoleRoute allowedRoles={["buyer"]}>
+                <ViewOrders />
+              </RoleRoute>
+            }
+          />
+          <Route
+            path="/buyer/products"
+            element={
+              <RoleRoute allowedRoles={["buyer"]}>
+                <AllProducts />
+              </RoleRoute>
+            }
+          />
+          <Route
+            path="/buyer/product/:id"
+            element={
+              <RoleRoute allowedRoles={["buyer"]}>
+                <ProductDetails />
+              </RoleRoute>
+            }
+          />
+          <Route
+            path="/sellers"
+            element={
+              <RoleRoute allowedRoles={["buyer"]}>
+                <ListSellers />
+              </RoleRoute>
+            }
+          />
 
-        {/* seller routes */}
-        <Route path="/seller/dashboard" element={<Dashboard />} />
-        <Route path="/seller/create" element={<CreateProduct />} />
-        <Route path="/seller/orders" element={<SellerOrders />} />
-        <Route path="/seller/products" element={<ListProducts />} />
-        {/* <Route path="/seller/profile" element={<SellerProfile />} /> */}
-      </Routes>
+          {/* Seller routes */}
+          <Route
+            path="/seller/dashboard"
+            element={
+              <RoleRoute allowedRoles={["seller"]}>
+                <Dashboard />
+              </RoleRoute>
+            }
+          />
+          <Route
+            path="/seller/create"
+            element={
+              <RoleRoute allowedRoles={["seller"]}>
+                <CreateProduct />
+              </RoleRoute>
+            }
+          />
+          <Route
+            path="/seller/orders"
+            element={
+              <RoleRoute allowedRoles={["seller"]}>
+                <SellerOrders />
+              </RoleRoute>
+            }
+          />
+          <Route
+            path="/seller/products"
+            element={
+              <RoleRoute allowedRoles={["seller"]}>
+                <ListProducts />
+              </RoleRoute>
+            }
+          />
+        </Routes>
+      </div>
     </BrowserRouter>
   );
 };

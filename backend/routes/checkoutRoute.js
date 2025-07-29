@@ -8,7 +8,6 @@ const router = express.Router();
 router.use(authMiddleware); // Apply auth middleware to all routes in this router
 
 router.route("/:id").post(checkoutController);
-router.post("/online/initiate-payment", initiatePayment);
 
 // router.post("/payment-status");
 
