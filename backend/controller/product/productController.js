@@ -1,4 +1,3 @@
-import e from "express";
 import Product from "../../models/productModel.js";
 
 export async function createProduct(req, res) {
@@ -7,10 +6,13 @@ export async function createProduct(req, res) {
       .status(403)
       .json({ message: "Access denied. Only sellers can create products." });
   }
+
   const { name, description, price, categoryId, count, imageUrl } = req.body;
+
   if (!name || !description || !price || !categoryId) {
     return res.status(400).json({ message: "All fields are required" });
   }
+
   try {
     const newProduct = new Product({
       name,
@@ -18,14 +20,21 @@ export async function createProduct(req, res) {
       price,
       categoryId,
       count: count || 1,
-      imageUrl: req.file ? `/uploads/${req.file.filename}` : null, // use multer file
-
-      sellerId: req.user._id, // Assuming user ID is available in req.user
+      imageUrl: req.file
+        ? `/uploads/${req.file.filename}`
+        : imageUrl || "/placeholder.svg?height=200&width=200&text=Product",
+      sellerId: req.user._id,
     });
+
     await newProduct.save();
-    return res
-      .status(201)
-      .json({ message: "Product Created Successfully", newProduct });
+
+    // ✅ populate categoryId so frontend always has object, not just ID
+    await newProduct.populate("categoryId");
+
+    return res.status(201).json({
+      message: "Product Created Successfully",
+      product: newProduct, // ✅ use "product" key instead of "newProduct"
+    });
   } catch (error) {
     console.error("Error creating product:", error);
     return res
@@ -81,7 +90,7 @@ export async function getProductsBySeller(req, res) {
     if (products.length === 0) {
       return res
         .status(404)
-        .json({ message: "No products found for this seller" });
+        .json({ message: "No products found for this seller", products: [] });
     }
     return res
       .status(200)
@@ -123,24 +132,43 @@ export async function updateProduct(req, res) {
     if (!product) {
       return res.status(404).json({ message: "Product not found" });
     }
+
     const updatedProduct = await Product.findByIdAndUpdate(
       id,
       {
-        name: name || product.name,
-        description: description || product.description,
-        price: price || product.price,
-        categoryId: categoryId || product.categoryId,
-        count: count || product.count,
-        imageUrl: imageUrl || product.imageUrl,
+        name: name ?? product.name,
+        description: description ?? product.description,
+        price: price ?? product.price,
+        categoryId: categoryId ?? product.categoryId,
+        count: count ?? product.count,
+        imageUrl: imageUrl ?? product.imageUrl,
       },
       { new: true }
-    );
+    ).populate("categoryId"); // ✅ populate categoryId like in create
 
-    return res
-      .status(200)
-      .json({ message: "Product Updated Successfully", updatedProduct });
+    return res.status(200).json({
+      message: "Product Updated Successfully",
+      product: updatedProduct,
+    });
   } catch (error) {
     console.error("Error updating product:", error);
+    return res
+      .status(500)
+      .json({ message: error.message || "Internal server error" });
+  }
+}
+
+export async function deleteProduct(req, res) {
+  const { id } = req.params;
+  try {
+    const product = await Product.findById(id);
+    if (!product) {
+      return res.status(404).json({ message: "Product not found" });
+    }
+    await Product.findByIdAndDelete(id);
+    return res.status(200).json({ message: "Product Deleted Successfully" });
+  } catch (error) {
+    console.error("Error deleting product:", error);
     return res
       .status(500)
       .json({ message: error.message || "Internal server error" });

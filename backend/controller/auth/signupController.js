@@ -10,10 +10,10 @@ export async function signupController(req, res) {
         message: "Provide all the data",
       });
 
-    const userExists = await User.findOne({ email });
+    const userExists = await User.findOne({ email, username });
     if (userExists)
       return res.status(400).json({
-        message: "User with that email is already Registered",
+        message: "User with that email or username is already Registered",
       });
 
     const user = await User.create({
