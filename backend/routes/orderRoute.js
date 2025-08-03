@@ -16,11 +16,11 @@ const router = express.Router();
 router.use(authMiddleware); // Apply auth middleware to all routes in this router
 
 router.route("/").get(getAllOrders).post(createOrder);
-// router.route("/:id").get(getOrderById);
+router.route("/single/:id").get(getOrderById);
 router.route("/myorders").get(getBuyerOrders);
 
 //seller
-router.route("/update").post(updateOrderStatus);
+router.route("/update/:id").post(updateOrderStatus);
 router.route("/seller").get(getSellerOrders);
 router.route("/cancel").get(cancelOrder);
 

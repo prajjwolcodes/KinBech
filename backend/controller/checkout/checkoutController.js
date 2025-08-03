@@ -8,7 +8,7 @@ import { generateHmacSha256Hash } from "../../utils/checkoutHelper.js";
 export async function checkoutController(req, res) {
   try {
     const orderId = req.params.id;
-    const { paymentMethod, shippingInfo, pidx, status } = req.body;
+    const { paymentMethod, shippingInfo, SUCCESS_URL, FAILURE_URL } = req.body;
 
     const order = await Order.findById(orderId);
     if (!order) {
@@ -37,25 +37,35 @@ export async function checkoutController(req, res) {
       // Deduct stock
       await deductStock(orderId);
 
-      return res.json({ payment, message: "Order confirmed with COD" });
+      // Populate items for frontend
+      const items = await OrderItem.find({ orderId }).populate("productId");
+
+      return res.json({
+        status: "success",
+        message: "Order confirmed with COD",
+        data: {
+          order,
+          items,
+          payment,
+        },
+      });
     }
 
     // ✅ Step 3: Handle Payment Gateway (Esewa/Khalti)
     if (paymentMethod === "ESEWA" || paymentMethod === "KHALTI") {
-      // If callback received (status check)
-      if (pidx || status) {
-        const paymentUpdate = await verifyPayment(
-          order,
-          paymentMethod,
-          pidx,
-          status
-        );
-        return res.json(paymentUpdate);
-      }
-
       // Otherwise initiate payment
-      const paymentUrl = await initiateGatewayPayment(order, paymentMethod);
+      const paymentUrl = await initiateGatewayPayment(
+        order,
+        paymentMethod,
+        SUCCESS_URL,
+        FAILURE_URL
+      );
+
       return res.json({
+        data: {
+          order,
+          items: await OrderItem.find({ orderId }).populate("productId"),
+        },
         url: paymentUrl,
         message: "Redirect to payment gateway",
       });
@@ -92,7 +102,12 @@ async function deductStock(orderId) {
 }
 
 // Initiate Esewa/Khalti payment
-async function initiateGatewayPayment(order, gateway) {
+async function initiateGatewayPayment(
+  order,
+  gateway,
+  SUCCESS_URL,
+  FAILURE_URL
+) {
   let paymentConfig;
 
   let existingPayment = await Payment.findOne({
@@ -107,19 +122,19 @@ async function initiateGatewayPayment(order, gateway) {
 
   // 3. Reuse or generate new transaction UUID
   let transaction_uuid = existingPayment?.transaction_uuid;
-  if (!transaction_uuid || existingPayment.status === "FAILED") {
+  if (!transaction_uuid || existingPayment.status === "UNPAID") {
     transaction_uuid = `${order._id}-${Date.now()}`;
   }
 
   if (gateway === "ESEWA") {
     const paymentData = {
       amount: order.total,
-      failure_url: process.env.FAILURE_URL,
       product_delivery_charge: "0",
       product_service_charge: "0",
       product_code: process.env.ESEWA_MERCHANT_ID,
       signed_field_names: "total_amount,transaction_uuid,product_code",
-      success_url: process.env.SUCCESS_URL,
+      success_url: SUCCESS_URL,
+      failure_url: FAILURE_URL,
       tax_amount: "0",
       total_amount: order.total,
       transaction_uuid,
@@ -186,8 +201,31 @@ async function initiateGatewayPayment(order, gateway) {
 // Verify Esewa/Khalti payment
 
 // ONLY RUNS AFTER PAYMENT GATEWAY CALLBACK ie frontend again calls this API with pidx/status after visiting success url
-async function verifyPayment(order, gateway, pidx, status) {
+export async function verifyPayment(req, res) {
   let paymentStatusCheck;
+  const { orderId, transaction_uuid, amount } = req.body;
+  if (!orderId || !transaction_uuid || !amount) {
+    return res
+      .status(400)
+      .json({ message: "Missing required parameters", status: "FAILED" });
+  }
+  const order = await Order.findById(orderId);
+  if (!order) {
+    return res.status(404).json({ message: "Order not found" });
+  }
+
+  const payment = await Payment.findOne({
+    orderId: order._id,
+  });
+  if (!payment) {
+    return res.status(404).json({ message: "Payment not found" });
+  }
+  const gateway = payment.method;
+
+  // Validate payment method
+  if (gateway !== "ESEWA" && gateway !== "KHALTI") {
+    return res.status(400).json({ message: "Invalid payment method" });
+  }
 
   if (gateway === "ESEWA") {
     const response = await axios.get(
@@ -195,8 +233,8 @@ async function verifyPayment(order, gateway, pidx, status) {
       {
         params: {
           product_code: process.env.ESEWA_MERCHANT_ID,
-          total_amount: order.total,
-          transaction_uuid: order._id.toString(),
+          total_amount: amount,
+          transaction_uuid: transaction_uuid,
         },
       }
     );
@@ -205,10 +243,15 @@ async function verifyPayment(order, gateway, pidx, status) {
 
     if (paymentStatusCheck.status === "COMPLETE") {
       await finalizeOrder(order, "PAID", gateway);
-      return { message: "Esewa payment successful", status: "COMPLETED" };
+
+      return res
+        .status(200)
+        .json({ message: "Esewa payment successful", status: "COMPLETED" });
     } else {
-      await updatePayment(order._id, "FAILED");
-      return { message: "Esewa payment failed", status: "FAILED" };
+      await updatePayment(order, "UNPAID");
+      return res
+        .status(400)
+        .json({ message: "Esewa payment failed", status: "FAILED" });
     }
   }
 
@@ -228,10 +271,14 @@ async function verifyPayment(order, gateway, pidx, status) {
 
     if (paymentStatusCheck.status === "Completed") {
       await finalizeOrder(order, "PAID", gateway);
-      return { message: "Khalti payment successful", status: "COMPLETED" };
+      return res
+        .status(200)
+        .json({ message: "Khalti payment successful", status: "COMPLETED" });
     } else {
       await updatePayment(order._id, "FAILED");
-      return { message: "Khalti payment failed", status: "FAILED" };
+      return res
+        .status(400)
+        .json({ message: "Khalti payment failed", status: "FAILED" });
     }
   }
 }
@@ -243,13 +290,16 @@ async function finalizeOrder(order, paymentStatus, method) {
     { $set: { status: paymentStatus, method } }
   );
 
+  const payment = await Payment.findOne({ orderId: order._id });
+
   order.status = "CONFIRMED";
+  order.payment = payment;
   await order.save();
 
   await deductStock(order._id);
 }
 
 // Update failed payment
-async function updatePayment(orderId, status) {
-  await Payment.updateOne({ orderId }, { $set: { status } });
+async function updatePayment(order, status) {
+  await Payment.updateOne({ orderId: order._id }, { $set: { status } });
 }

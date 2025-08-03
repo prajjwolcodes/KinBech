@@ -19,6 +19,10 @@ const orderSchema = new mongoose.Schema(
       city: { type: String },
       phone: { type: String },
     },
+    payment: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Payment",
+    },
     createdAt: { type: Date, default: Date.now },
     updatedAt: { type: Date, default: Date.now },
   },

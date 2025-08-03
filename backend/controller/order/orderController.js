@@ -53,7 +53,7 @@ export async function createOrder(req, res) {
     }
 
     // 5. Create order
-    const expireAt = new Date(Date.now() + 1 * 60 * 1000);
+    const expireAt = new Date(Date.now() + 30 * 60 * 1000);
 
     const [order] = await Order.create([{ buyerId, total, expireAt }], {
       session,
@@ -104,7 +104,7 @@ export async function getOrderById(req, res) {
     }
 
     const items = await OrderItem.find({ orderId: id })
-      .populate("productId", "title price")
+      .populate("productId")
       .lean();
 
     res.json({
