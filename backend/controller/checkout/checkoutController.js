@@ -104,7 +104,7 @@ async function deductStock(orderId) {
 // Initiate Esewa/Khalti payment
 async function initiateGatewayPayment(
   order,
-  gateway,
+  paymentMethod,
   SUCCESS_URL,
   FAILURE_URL
 ) {
@@ -112,7 +112,7 @@ async function initiateGatewayPayment(
 
   let existingPayment = await Payment.findOne({
     orderId: order._id,
-    method: "ESEWA",
+    method: paymentMethod,
   });
 
   // 2. If already paid, don't allow another
@@ -126,7 +126,7 @@ async function initiateGatewayPayment(
     transaction_uuid = `${order._id}-${Date.now()}`;
   }
 
-  if (gateway === "ESEWA") {
+  if (paymentMethod === "ESEWA") {
     const paymentData = {
       amount: order.total,
       product_delivery_charge: "0",
@@ -149,7 +149,7 @@ async function initiateGatewayPayment(
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       responseHandler: (response) => response.request?.res?.responseUrl,
     };
-  } else if (gateway === "KHALTI") {
+  } else if (paymentMethod === "KHALTI") {
     paymentConfig = {
       url: process.env.KHALTI_PAYMENT_URL,
       data: {
@@ -157,10 +157,10 @@ async function initiateGatewayPayment(
         product_identity: order._id,
         product_name: `Order ${order._id}`,
         public_key: process.env.KHALTI_PUBLIC_KEY,
-        return_url: process.env.KHALTI_SUCCESS_URL,
-        failure_url: process.env.KHALTI_FAILURE_URL,
+        return_url: SUCCESS_URL,
+        failure_url: FAILURE_URL,
 
-        website_url: "http://localhost:5173",
+        website_url: process.env.FRONTEND_URL,
         purchase_order_id: order._id,
         purchase_order_name: `Order ${order._id}`,
       },
@@ -189,7 +189,7 @@ async function initiateGatewayPayment(
     await Payment.create({
       orderId: order._id,
       amount: order.total,
-      method: "ESEWA",
+      method: paymentMethod,
       status: "UNPAID",
       transaction_uuid,
     });
@@ -202,84 +202,101 @@ async function initiateGatewayPayment(
 
 // ONLY RUNS AFTER PAYMENT GATEWAY CALLBACK ie frontend again calls this API with pidx/status after visiting success url
 export async function verifyPayment(req, res) {
-  let paymentStatusCheck;
-  const { orderId, transaction_uuid, amount } = req.body;
-  if (!orderId || !transaction_uuid || !amount) {
-    return res
-      .status(400)
-      .json({ message: "Missing required parameters", status: "FAILED" });
-  }
-  const order = await Order.findById(orderId);
-  if (!order) {
-    return res.status(404).json({ message: "Order not found" });
-  }
+  try {
+    const { orderId, transaction_uuid, amount, pidx } = req.body;
 
-  const payment = await Payment.findOne({
-    orderId: order._id,
-  });
-  if (!payment) {
-    return res.status(404).json({ message: "Payment not found" });
-  }
-  const gateway = payment.method;
-
-  // Validate payment method
-  if (gateway !== "ESEWA" && gateway !== "KHALTI") {
-    return res.status(400).json({ message: "Invalid payment method" });
-  }
-
-  if (gateway === "ESEWA") {
-    const response = await axios.get(
-      process.env.ESEWA_PAYMENT_STATUS_CHECK_URL,
-      {
-        params: {
-          product_code: process.env.ESEWA_MERCHANT_ID,
-          total_amount: amount,
-          transaction_uuid: transaction_uuid,
-        },
-      }
-    );
-
-    paymentStatusCheck = response.data;
-
-    if (paymentStatusCheck.status === "COMPLETE") {
-      await finalizeOrder(order, "PAID", gateway);
-
-      return res
-        .status(200)
-        .json({ message: "Esewa payment successful", status: "COMPLETED" });
-    } else {
-      await updatePayment(order, "UNPAID");
-      return res
-        .status(400)
-        .json({ message: "Esewa payment failed", status: "FAILED" });
+    const order = await Order.findById(orderId);
+    if (!order) {
+      return res.status(404).json({ message: "Order not found" });
     }
-  }
 
-  if (gateway === "KHALTI") {
-    const response = await axios.post(
-      process.env.KHALTI_VERIFICATION_URL,
-      { pidx },
-      {
-        headers: {
-          Authorization: `Key ${process.env.KHALTI_SECRET_KEY}`,
-          "Content-Type": "application/json",
-        },
-      }
-    );
-
-    paymentStatusCheck = response.data;
-
-    if (paymentStatusCheck.status === "Completed") {
-      await finalizeOrder(order, "PAID", gateway);
-      return res
-        .status(200)
-        .json({ message: "Khalti payment successful", status: "COMPLETED" });
-    } else {
-      await updatePayment(order._id, "FAILED");
-      return res
-        .status(400)
-        .json({ message: "Khalti payment failed", status: "FAILED" });
+    const payment = await Payment.findOne({ orderId: order._id });
+    if (!payment) {
+      return res.status(404).json({ message: "Payment not found" });
     }
+
+    const gateway = payment.method;
+
+    if (gateway !== "ESEWA" && gateway !== "KHALTI") {
+      return res.status(400).json({ message: "Invalid payment method" });
+    }
+
+    if (gateway === "ESEWA") {
+      // Make sure required data is present
+      if (!transaction_uuid || !amount) {
+        return res
+          .status(400)
+          .json({ message: "Missing transaction data for Esewa" });
+      }
+
+      const response = await axios.get(
+        process.env.ESEWA_PAYMENT_STATUS_CHECK_URL,
+        {
+          params: {
+            product_code: process.env.ESEWA_MERCHANT_ID,
+            total_amount: amount,
+            transaction_uuid: transaction_uuid,
+          },
+        }
+      );
+
+      const paymentStatusCheck = response.data;
+
+      if (paymentStatusCheck.status === "COMPLETE") {
+        await finalizeOrder(order._id, "PAID", gateway); // pass order._id for consistency
+        return res.status(200).json({
+          message: "Esewa payment successful",
+          status: "COMPLETED",
+          order: order,
+        });
+      } else {
+        await updatePayment(order._id, "UNPAID");
+        return res.status(400).json({
+          message: "Esewa payment failed",
+          status: "FAILED",
+        });
+      }
+    }
+
+    if (gateway === "KHALTI") {
+      if (!pidx) {
+        return res.status(400).json({ message: "Missing pidx for Khalti" });
+      }
+
+      const response = await axios.post(
+        process.env.KHALTI_VERIFICATION_URL,
+        { pidx },
+        {
+          headers: {
+            Authorization: `Key ${process.env.KHALTI_SECRET_KEY}`,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      const paymentStatusCheck = response.data;
+
+      if (paymentStatusCheck.status === "Completed") {
+        await finalizeOrder(order._id, "PAID", gateway);
+        return res.status(200).json({
+          message: "Khalti payment successful",
+          status: "COMPLETED",
+          order: order,
+        });
+      } else {
+        await updatePayment(order._id, "FAILED");
+        return res.status(400).json({
+          message: "Khalti payment failed",
+          status: "FAILED",
+        });
+      }
+    }
+  } catch (error) {
+    console.error("verifyPayment error:", error);
+    return res.status(500).json({
+      message: "Internal server error during payment verification",
+      error: error.message || error.toString(),
+    });
   }
 }
 
@@ -292,11 +309,15 @@ async function finalizeOrder(order, paymentStatus, method) {
 
   const payment = await Payment.findOne({ orderId: order._id });
 
-  order.status = "CONFIRMED";
-  order.payment = payment;
-  await order.save();
+  const existingOrder = await Order.findById(order._id);
+  if (!existingOrder) {
+    throw new Error("Order not found");
+  }
+  existingOrder.status = "CONFIRMED";
+  existingOrder.payment = payment;
+  await existingOrder.save();
 
-  await deductStock(order._id);
+  await deductStock(existingOrder._id);
 }
 
 // Update failed payment
