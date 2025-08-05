@@ -12,6 +12,7 @@ import authRoutes from "./routes/authRoute.js";
 import categoryRoutes from "./routes/categoryRoute.js";
 import orderRoutes from "./routes/orderRoute.js";
 import checkoutRoutes from "./routes/checkoutRoute.js";
+import userRoutes from "./routes/userRoute.js";
 
 configDotenv();
 
@@ -51,6 +52,7 @@ app.use("/api/product", productRoutes);
 app.use("/api/category", categoryRoutes);
 app.use("/api/orders", orderRoutes);
 app.use("/api/checkout", checkoutRoutes);
+app.use("/api/users", userRoutes);
 
 app.get("/", async (req, res) => {
   const users = await User.find();

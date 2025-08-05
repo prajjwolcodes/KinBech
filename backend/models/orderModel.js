@@ -23,20 +23,25 @@ const orderSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "Payment",
     },
-    createdAt: { type: Date, default: Date.now },
-    updatedAt: { type: Date, default: Date.now },
+    expireAt: { type: Date }, // field required for TTL
   },
-
   { timestamps: true }
 );
 
+// Set expireAt only for pending orders
+orderSchema.pre("save", function (next) {
+  if (this.status === "PENDING" && !this.expireAt) {
+    this.expireAt = new Date(Date.now() + 30 * 60 * 1000); // 30 minutes from now
+  }
+  next();
+});
+
+// TTL Index: deletes document once expireAt is reached
 orderSchema.index(
   { expireAt: 1 },
   {
-    expireAfterSeconds: 0, // 1 minute
-    partialFilterExpression: {
-      status: { $in: ["PENDING"] },
-    },
+    expireAfterSeconds: 0,
+    partialFilterExpression: { status: "PENDING" },
   }
 );
 

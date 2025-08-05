@@ -53,9 +53,8 @@ export async function createOrder(req, res) {
     }
 
     // 5. Create order
-    const expireAt = new Date(Date.now() + 30 * 60 * 1000);
 
-    const [order] = await Order.create([{ buyerId, total, expireAt }], {
+    const [order] = await Order.create([{ buyerId, total }], {
       session,
     });
 
@@ -96,7 +95,9 @@ export async function getOrderById(req, res) {
   }
 
   try {
-    const order = await Order.findById(id).lean();
+    const order = await Order.findById(id)
+      .lean()
+      .populate("payment", "method status");
     if (!order) {
       return res
         .status(404)
@@ -126,10 +127,13 @@ export async function getBuyerOrders(req, res) {
   const buyerId = req.user._id;
 
   try {
-    const orders = await Order.find({ buyerId }).sort({ createdAt: -1 }).lean();
+    const orders = await Order.find({ buyerId })
+      .sort({ createdAt: -1 })
+      .lean()
+      .populate("payment", "method status");
     const orderIds = orders.map((o) => o._id);
     const items = await OrderItem.find({ orderId: { $in: orderIds } })
-      .populate("productId", "title price")
+      .populate("productId")
       .lean();
 
     const ordersWithItems = orders.map((order) => ({
@@ -154,11 +158,21 @@ export async function getAllOrders(req, res) {
       .json({ message: "Access denied. Only admins can view all orders." });
   }
   try {
-    const orders = await Order.find().sort({ createdAt: -1 }).lean();
+    const orders = await Order.find()
+      .sort({ createdAt: -1 })
+      .lean()
+      .populate("payment", "method status")
+      .populate("buyerId");
 
     const orderIds = orders.map((o) => o._id);
     const items = await OrderItem.find({ orderId: { $in: orderIds } })
-      .populate("productId", "title price")
+      .populate("productId")
+      .populate({
+        path: "productId",
+        populate: {
+          path: "sellerId", // field inside Product schema
+        },
+      })
       .lean();
 
     const ordersWithItems = orders.map((order) => ({
@@ -183,37 +197,72 @@ export async function getSellerOrders(req, res) {
       .status(403)
       .json({ message: "Access denied. Only sellers can view their orders." });
   }
+
   const sellerId = req.user._id;
 
   try {
-    const sellerProducts = await Product.find({ sellerId })
-      .select("_id title")
-      .lean();
+    // 1. Get all seller's products
+    const sellerProducts = await Product.find({ sellerId }).lean();
     const productIds = sellerProducts.map((p) => p._id);
 
+    // 2. Find order items for those products
     const items = await OrderItem.find({ productId: { $in: productIds } })
-      .populate("orderId")
-      .populate("productId", "title")
+      .populate({
+        path: "orderId",
+        populate: [
+          { path: "buyerId", select: "username email" }, // populate buyer
+          { path: "payment" }, // include payment
+        ],
+      })
+      .populate("productId") // product details
       .lean();
 
+    // 3. Group items by orderId (but recalc total for this seller only)
     const grouped = items.reduce((acc, item) => {
-      const orderId = item.orderId._id.toString();
+      const order = item.orderId;
+      if (!order) return acc; // skip if missing
+
+      const orderId = order._id.toString();
+
       if (!acc[orderId]) {
         acc[orderId] = {
-          ...item.orderId,
+          _id: order._id,
+          buyerId: order.buyerId,
+          total: 0, // start at 0, we'll add seller's items
+          status: order.status,
+          createdAt: order.createdAt,
+          updatedAt: order.updatedAt,
+          shippingInfo: order.shippingInfo,
+          payment: order.payment,
+          __v: order.__v,
           items: [],
         };
       }
+
+      // Add this seller's item
       acc[orderId].items.push({
-        productId: item.productId._id,
-        title: item.productId.title,
-        quantity: item.quantity,
+        _id: item._id,
+        orderId: order._id,
+        productId: item.productId,
         price: item.price,
+        quantity: item.quantity,
+        sellerId: item.sellerId,
+        __v: item.__v,
+        createdAt: item.createdAt,
+        updatedAt: item.updatedAt,
       });
+
+      // Increment seller's total
+      acc[orderId].total += item.price * item.quantity;
+
       return acc;
     }, {});
 
-    const orders = Object.values(grouped);
+    // 4. Convert object to array & sort (newest first)
+    const orders = Object.values(grouped).sort(
+      (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
+    );
+
     res.json({
       status: "success",
       message: "Seller orders retrieved",
@@ -240,7 +289,9 @@ export async function updateOrderStatus(req, res) {
   }
 
   try {
-    const order = await Order.findById(id);
+    const order = await Order.findById(id)
+      .populate("payment", "method status")
+      .populate("buyerId");
     if (!order) {
       return res
         .status(404)
@@ -256,6 +307,48 @@ export async function updateOrderStatus(req, res) {
     res.json({
       status: "success",
       message: "Order status updated",
+      data: { order },
+    });
+  } catch (err) {
+    res.status(500).json({ status: "error", message: err.message });
+  }
+}
+
+export async function updatePaymentStatus(req, res) {
+  if (req.user.role !== "seller" && req.user.role !== "admin") {
+    return res.status(403).json({
+      message:
+        "Access denied. Only sellers and admin can update payment status.",
+    });
+  }
+  const { id } = req.params;
+  const { status } = req.body;
+
+  if (!mongoose.Types.ObjectId.isValid(id) || !status) {
+    return res
+      .status(400)
+      .json({ status: "error", message: "Order ID and status required" });
+  }
+
+  try {
+    const order = await Order.findById(id)
+      .populate("payment", "method status")
+      .populate("buyerId");
+    if (!order) {
+      return res
+        .status(404)
+        .json({ status: "error", message: "Order not found" });
+    }
+
+    // Optional: Restrict only sellers of the products to update status
+    // Add logic here if needed
+
+    order.payment.status = status;
+    await order.payment.save();
+
+    res.json({
+      status: "success",
+      message: "Payment status updated",
       data: { order },
     });
   } catch (err) {

@@ -30,7 +30,7 @@ export async function checkoutController(req, res) {
         method: "COD",
         status: "UNPAID",
       });
-
+      order.payment = payment;
       order.status = "CONFIRMED";
       await order.save();
 
